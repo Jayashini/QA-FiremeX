@@ -1,0 +1,32 @@
+name: FiremeX QA Deployment
+
+on:
+  repository_dispatch:
+    types: [firemex-qa-deploy]
+
+jobs:
+
+  qa-deploy:
+    name: Deploy to QA Environment
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # 1. Checkout QA repository
+      - name: Checkout QA Repository
+        uses: actions/checkout@v4
+
+      # 2. Display the source commit that triggered deployment
+      - name: Show Source Commit
+        run: |
+          echo "Source Repository: ${{ github.event.client_payload.source_repo }}"
+          echo "Source Commit: ${{ github.event.client_payload.commit_sha }}"
+
+      # 3. Add your QA deployment steps here
+      - name: Deploy to QA
+        run: |
+          echo "Deploying FiremeX to QA environment..."
+
+      # Example if QA-FiremeX contains Docker Compose:
+      # - name: Start QA Environment
+      #   run: docker compose -f docker-compose.qa.yml up -d --build

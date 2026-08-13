@@ -1,0 +1,51 @@
+services:
+
+  homeassistant:
+    container_name: firemex_qa_homeassistant
+    image: "homeassistant/home-assistant:stable"
+
+    volumes:
+      - ./homeassistant_config:/config
+      - /etc/localtime:/etc/localtime:ro
+
+    restart: unless-stopped
+
+    ports:
+      - "8124:8123"
+
+    depends_on:
+      - db
+
+    networks:
+      - firemex_qa_network
+
+
+  # --- QA POSTGRES DATABASE ---
+  db:
+    container_name: firemex_qa_db
+    image: postgres:15-alpine
+
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_DB: firemex_qa
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - qa_postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - firemex_qa_network
+
+
+volumes:
+  qa_postgres_data:
+
+
+networks:
+  firemex_qa_network:
+    driver: bridge
