@@ -2,7 +2,7 @@ services:
 
   homeassistant:
     container_name: firemex_qa_homeassistant
-    image: "homeassistant/home-assistant:stable"
+    image: ${HOMEASSISTANT_IMAGE:-ghcr.io/home-assistant/home-assistant:stable}
 
     volumes:
       - ./homeassistant_config:/config

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "lovelace_dashboards",
+  "data": {
+    "items": [
+      {
+        "id": "map",
+        "icon": "mdi:map",
+        "title": "Map",
+        "url_path": "map",
+        "mode": "storage",
+        "require_admin": false,
+        "show_in_sidebar": true
+      },
+      {
+        "id": "qa_firemex",
+        "show_in_sidebar": true,
+        "icon": "mdi:fire-alert",
+        "title": "QA FiremeX",
+        "require_admin": false,
+        "mode": "storage",
+        "url_path": "qa-firemex"
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "lovelace.qa_firemex",
+  "data": {
+    "config": {
+      "strategy": {
+        "type": "iframe",
+        "url": "http://localhost:5173/"
+      }
+    }
+  }
+}
