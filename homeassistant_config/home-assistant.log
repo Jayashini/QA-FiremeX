@@ -1,3 +1,1 @@
-2026-09-28 06:43:25.988 WARNING (Recorder) [homeassistant.components.recorder.util] The system could not validate that the sqlite3 database at //config/home-assistant_v2.db was shutdown cleanly
-2026-09-28 06:43:26.236 WARNING (Recorder) [homeassistant.components.recorder.util] Ended unfinished session (id=7 from 2026-09-28 06:07:09.322918)
-2026-09-28 06:58:10.096 ERROR (MainThread) [homeassistant.components.websocket_api.http.connection] [5353861882000] Error handling message: Icons should be specified in the form "prefix:name" at 'icon'. Got 'fire' (invalid_format) Jayashini Jayaweera from 172.19.0.1 (Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36)
+2026-10-02 10:04:53.551 WARNING (Recorder) [homeassistant.components.recorder.util] The system could not validate that the sqlite3 database at //config/home-assistant_v2.db was shutdown cleanly
