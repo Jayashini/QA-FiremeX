@@ -9,7 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, NoAlertPresentException, UnexpectedAlertPresentException
 
-BASE_URL = "http://localhost:5174"
+BASE_URL = "http://localhost:8124/qa-firemex/0"
 
 class FiremexAutomatedTests(unittest.TestCase):
     @classmethod
@@ -42,7 +42,7 @@ class FiremexAutomatedTests(unittest.TestCase):
         password_field = self.driver.find_element(By.XPATH, "//input[@type='password']")
         
         # 1. Verify Placeholders match expected format
-        self.assertEqual(email_field.get_attribute("placeholder"), "name@company.com")
+        self.assertEqual(email_field.get_attribute("placeholder"), "Enter Organization/Employee Email")
         self.assertEqual(password_field.get_attribute("placeholder"), "Enter Password")
         
         # 2. Verify initial values are empty
