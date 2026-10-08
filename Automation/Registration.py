@@ -1,15 +1,15 @@
+import os
 import unittest
 import time
 import re
+import uuid
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, NoAlertPresentException, UnexpectedAlertPresentException
 
-BASE_URL = "http://localhost:5174/FiremeX/register"
+BASE_URL = os.getenv("FIREMEX_BASE_URL", "http://localhost:5173/FiremeX/register")
 
 class FiremexRegistrationTests(unittest.TestCase):
     @classmethod
@@ -31,6 +31,29 @@ class FiremexRegistrationTests(unittest.TestCase):
         """Ensure starting state before each test case."""
         self.driver.get(BASE_URL)
         time.sleep(1)
+
+    def _wait_for_registration_toast(self, expected_title="Registration Successful"):
+        title = self.wait.until(EC.visibility_of_element_located(
+            (By.XPATH, "//p[normalize-space(.)='Registration Successful' or normalize-space(.)='Registration Failed']")
+        ))
+        message = title.find_element(By.XPATH, "following-sibling::p").text
+        self.assertEqual(
+            title.text,
+            expected_title,
+            f"Expected toast title {expected_title!r}, got {title.text!r}: {message}",
+        )
+        return message
+
+    def _select_organization_sector_and_country(self, country_name="United States"):
+        sector = self.wait.until(EC.visibility_of_element_located(
+            (By.XPATH, "//label[normalize-space()='Sector']/following-sibling::select")
+        ))
+        Select(sector).select_by_visible_text("Industrial")
+
+        country = self.wait.until(EC.visibility_of_element_located(
+            (By.XPATH, "//label[normalize-space()='Country']/following-sibling::select")
+        ))
+        Select(country).select_by_visible_text(country_name)
 
     # 1. LINK TO SIGN IN
     def test_TC_REG_01_verify_already_have_account_sign_in_link(self):
@@ -93,43 +116,36 @@ class FiremexRegistrationTests(unittest.TestCase):
         org_name.click()
         org_name.send_keys("Safety Solutions Corp")
 
-        # 2. Sector Dropdown
-        sector_elements = self.driver.find_elements(
-            By.XPATH, "//select[contains(@name, 'sector')] | //*[contains(@placeholder, 'Sector') or contains(@name, 'sector') or contains(text(), 'Sector') or contains(@class, 'select')]"
-        )
-        if sector_elements:
-            sector_dropdown = sector_elements[0]
-            self.assertTrue(sector_dropdown.is_displayed(), "Organization Sector dropdown is not visible.")
-            sector_dropdown.click()
+        # 2. Sector and country dropdowns
+        self._select_organization_sector_and_country()
 
         # 3. Organization Email & Format validation (name@company.com)
         org_email = self.driver.find_element(
             By.XPATH, "//input[@type='email' or contains(@placeholder, 'Email') or contains(@name, 'email')]"
         )
         self.assertTrue(org_email.is_enabled(), "Organization email field is not clickable.")
-        test_email = "admin@safetysolutions.com"
+        test_email = f"admin+{uuid.uuid4().hex[:8]}@safetysolutions.com"
         org_email.clear()
         org_email.send_keys(test_email)
-        self.assertTrue(re.match(r"^[\w\.\-]+@[\w\.\-]+\.[a-zA-Z]{2,}$", org_email.get_attribute("value")),
+        self.assertTrue(re.match(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$", org_email.get_attribute("value")),
                         "Email format name@company.com validation failed.")
 
-        # 4. Country Input Field
-        country_elements = self.driver.find_elements(
-            By.XPATH, "//input[contains(@placeholder, 'Country') or contains(@name, 'country')] | //select[contains(@name, 'country')] | //*[contains(text(), 'Country')]"
-        )
-        if country_elements:
-            country_field = country_elements[0]
-            self.assertTrue(country_field.is_enabled(), "Country input field is not clickable.")
-
-        # 5. Contact Number Input Field & Format Validation
+        # 4. Contact Number Input Field & Format Validation
         contact_field = self.driver.find_element(
             By.XPATH, "//input[contains(@type, 'tel') or contains(@placeholder, 'Contact') or contains(@placeholder, 'Phone') or contains(@name, 'phone')]"
         )
         self.assertTrue(contact_field.is_enabled(), "Contact number field is not clickable.")
         contact_field.clear()
-        contact_field.send_keys("+1 555-0199")
+        contact_field.send_keys("+1 202-555-0123")
         self.assertTrue(re.match(r"^\+?[\d\s\-]{7,15}$", contact_field.get_attribute("value")),
                         "Contact number format is invalid.")
+
+        # 5. Administrator Name
+        admin_name = self.driver.find_element(
+            By.XPATH, "//input[@placeholder='Enter Administrator Name']"
+        )
+        self.assertTrue(admin_name.is_enabled(), "Administrator name field is not clickable.")
+        admin_name.send_keys("Mary Admin")
 
         # 6. Password setup field & Confirm Password field
         pass_inputs = self.driver.find_elements(
@@ -152,34 +168,32 @@ class FiremexRegistrationTests(unittest.TestCase):
 
         # 8. Password Eye Toggle Icon
         eye_toggle_icons = self.driver.find_elements(
-            By.XPATH, "//button[descendant::*[name()='svg'] or contains(@class, 'eye')]"
+            By.XPATH, "//button[@type='button' and contains(@class, 'inset-y-0') and contains(@class, 'right-0')]"
         )
-        if eye_toggle_icons:
-            eye_btn = eye_toggle_icons[0]
-            self.assertTrue(eye_btn.is_displayed(), "Eye toggle icon in password field is not visible.")
-            eye_btn.click()
-            time.sleep(0.5)
+        self.assertEqual(len(eye_toggle_icons), 2, "Expected eye toggles for password and confirmation fields.")
+        eye_btn = eye_toggle_icons[0]
+        self.assertTrue(eye_btn.is_displayed(), "Eye toggle icon in password field is not visible.")
+        self.assertEqual(password_field.get_attribute("type"), "password")
+        eye_btn.click()
+        self.wait.until(lambda _: password_field.get_attribute("type") == "text")
+        self.assertEqual(confirm_password_field.get_attribute("type"), "text")
+        eye_btn.click()
+        self.wait.until(lambda _: password_field.get_attribute("type") == "password")
+        self.assertEqual(confirm_password_field.get_attribute("type"), "password")
 
         # 9. Verify Registration button status and submit
-        submit_btn = self.driver.find_element(
-            By.XPATH, "//button[@type='submit'] | //button[contains(., 'Complete Registration')]"
+        submit_btn = self.wait.until(
+            EC.element_to_be_clickable(
+                (By.XPATH, "//button[@type='submit' and contains(normalize-space(.), 'Complete Registration')]")
+            )
         )
         self.assertTrue(submit_btn.is_enabled(), "Registration button is disabled after filling required inputs.")
         submit_btn.click()
-        time.sleep(1)
 
-        # 10. Organization registration successful message verification
-        try:
-            alert = self.driver.switch_to.alert
-            alert_text = alert.text
-            self.assertIn("success", alert_text.lower())
-            alert.accept()
-        except Exception:
-            # Check for onscreen success banner/toast if alert not present
-            success_msg = self.driver.find_element(
-                By.XPATH, "//*[contains(text(), 'successful') or contains(text(), 'Registered successfully') or contains(text(), 'registered')]"
-            )
-            self.assertTrue(success_msg.is_displayed(), "Organization registration success message not displayed.")
+        toast_message = self._wait_for_registration_toast()
+        self.assertIn('Organization "Safety Solutions Corp" registered!', toast_message)
+        self.assertRegex(toast_message, r"ORG-\d+")
+        self.wait.until(EC.url_contains("/FiremeX/login"))
 
     def test_TC_REG_04_verify_registration_button_disabled_when_fields_empty(self):
         """TC-REG-04: Verify that the registration button is disabled until all mandatory input fields are filled."""
@@ -209,11 +223,123 @@ class FiremexRegistrationTests(unittest.TestCase):
         else:
             self.assertTrue(is_disabled, "Registration button is not disabled when input fields are empty.")
 
+    def test_TC_REG_06_mismatched_passwords_show_error_toast_without_submitting(self):
+        """Mismatched passwords show the in-page error toast and do not submit."""
+        org_btn = self.wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//*[contains(text(), 'Register as an Organization') or contains(text(), 'Select Organization')]")
+        ))
+        org_btn.click()
+
+        self._select_organization_sector_and_country()
+        self.driver.find_element(By.XPATH, "//input[@placeholder='Enter Org Name']").send_keys("Mismatch Test Org")
+        self.driver.find_element(By.XPATH, "//input[@placeholder='Enter Organization Email']").send_keys(
+            f"mismatch+{uuid.uuid4().hex[:8]}@safetysolutions.com"
+        )
+        self.driver.find_element(By.XPATH, "//input[@placeholder='Enter Organization Contact Number']").send_keys(
+            "+1 202-555-0123"
+        )
+        self.driver.find_element(By.XPATH, "//input[@placeholder='Enter Administrator Name']").send_keys("Mary Admin")
+
+        password_fields = self.driver.find_elements(
+            By.XPATH, "//input[@placeholder='••••••••••••']"
+        )
+        self.assertEqual(len(password_fields), 2, "Expected password and confirmation inputs.")
+        password_fields[0].send_keys("SecurePass123!")
+        password_fields[1].send_keys("DifferentPass123!")
+
+        self.driver.find_element(
+            By.XPATH, "//button[@type='submit' and normalize-space(.)='Complete Registration']"
+        ).click()
+        message = self._wait_for_registration_toast("Registration Failed")
+        self.assertEqual(message, "Passwords do not match")
+        self.assertIn("/register", self.driver.current_url)
+
+    def test_TC_REG_07_reject_phone_number_that_does_not_match_country(self):
+        """Country-mismatched contact numbers are rejected before registration."""
+        org_btn = self.wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//*[contains(text(), 'Register as an Organization') or contains(text(), 'Select Organization')]")
+        ))
+        org_btn.click()
+
+        self._select_organization_sector_and_country("United States")
+        self.driver.find_element(By.XPATH, "//input[@placeholder='Enter Org Name']").send_keys(
+            "Phone Country Validation Org"
+        )
+        self.driver.find_element(By.XPATH, "//input[@placeholder='Enter Organization Email']").send_keys(
+            f"phone-country+{uuid.uuid4().hex[:8]}@safetysolutions.com"
+        )
+        self.driver.find_element(By.XPATH, "//input[@placeholder='Enter Organization Contact Number']").send_keys(
+            "+94 77 123 4567"
+        )
+        self.driver.find_element(By.XPATH, "//input[@placeholder='Enter Administrator Name']").send_keys("Mary Admin")
+
+        password_fields = self.driver.find_elements(
+            By.XPATH, "//input[@placeholder='••••••••••••']"
+        )
+        self.assertEqual(len(password_fields), 2, "Expected password and confirmation inputs.")
+        password_fields[0].send_keys("SecurePass123!")
+        password_fields[1].send_keys("SecurePass123!")
+
+        self.driver.execute_script(
+            "window.__organizationRegistrationRequests = 0;"
+            "const originalFetch = window.fetch.bind(window);"
+            "window.fetch = (...args) => {"
+            "  if (String(args[0]).includes('register/organization')) {"
+            "    window.__organizationRegistrationRequests += 1;"
+            "  }"
+            "  return originalFetch(...args);"
+            "};"
+        )
+        self.driver.find_element(
+            By.XPATH, "//button[@type='submit' and normalize-space(.)='Complete Registration']"
+        ).click()
+
+        message = self._wait_for_registration_toast("Registration Failed")
+        self.assertEqual(message, "Contact number format mismatch")
+        self.assertIn("/register", self.driver.current_url)
+        self.assertEqual(
+            self.driver.execute_script("return window.__organizationRegistrationRequests;"),
+            0,
+            "Registration request was sent despite the country/phone mismatch.",
+        )
+
     # 4. OPERATOR REGISTRATION
     def test_TC_REG_05_register_as_operator_for_organization(self):
         """TC-REG-05: Register as an operator for an organization and verify request submission."""
         self.driver.get(BASE_URL)
-        
+
+        # Create a real organization first so the operator flow can use a valid org code.
+        org_btn = self.wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//*[contains(text(), 'Register as an Organization') or contains(text(), 'Select Organization')]")
+        ))
+        org_btn.click()
+        time.sleep(1)
+
+        org_name = self.wait.until(EC.visibility_of_element_located(
+            (By.XPATH, "//input[contains(@placeholder, 'Enter Org Name') or contains(@placeholder, 'Organization Name') or contains(@name, 'orgName') or contains(@name, 'name')]")
+        ))
+        org_name.send_keys("Safety Solutions Corp")
+
+        self._select_organization_sector_and_country()
+        self.driver.find_element(By.XPATH, "//input[@type='email' or contains(@placeholder, 'Business Email') or contains(@placeholder, 'Organization Email')] ").send_keys(f"admin+{uuid.uuid4().hex[:8]}@safetysolutions.com")
+        self.driver.find_element(By.XPATH, "//input[contains(@placeholder, 'Enter Organization Contact Number') or contains(@placeholder, 'Contact Number') or contains(@type, 'tel')] ").send_keys("+1 202-555-0123")
+        self.driver.find_element(By.XPATH, "//input[@type='text' and contains(@placeholder, 'Enter Administrator Name')] ").send_keys("Mary Admin")
+
+        password_fields = self.driver.find_elements(By.XPATH, "//input[@type='password' or contains(@placeholder, '••••••••••••')]")
+        self.assertEqual(len(password_fields), 2, "Expected password and confirmation inputs.")
+        password_fields[0].send_keys("SecurePass123!")
+        password_fields[1].send_keys("SecurePass123!")
+
+        self.driver.find_element(By.XPATH, "//button[@type='submit' and contains(normalize-space(.), 'Complete Registration')]").click()
+        toast_message = self._wait_for_registration_toast()
+        self.assertIn('Organization "Safety Solutions Corp" registered!', toast_message)
+        org_code_match = re.search(r"ORG-\d+", toast_message)
+        self.assertIsNotNone(org_code_match, "Organization registration toast did not include an organization code.")
+        org_code = org_code_match.group(0)
+
+        self.wait.until(EC.url_contains("/FiremeX/login"))
+        self.driver.get(BASE_URL)
+
         # Click Register as an Operator card
         operator_card = self.wait.until(EC.element_to_be_clickable(
             (By.XPATH, "//*[contains(text(), 'Register as an Operator') or contains(text(), 'Select Operator')]")
@@ -222,11 +348,11 @@ class FiremexRegistrationTests(unittest.TestCase):
         time.sleep(1)
 
         # 1. Organization Code
-        org_code = self.wait.until(EC.visibility_of_element_located(
-            (By.XPATH, "//input[contains(@placeholder, 'e.g. ORG-101') ]")
+        org_code_input = self.wait.until(EC.visibility_of_element_located(
+            (By.XPATH, "//input[contains(@placeholder, 'e.g. ORG-101') or contains(@placeholder, 'ORG-101')]")
         ))
-        org_code.click()
-        org_code.send_keys("ORG-101")
+        org_code_input.click()
+        org_code_input.send_keys(org_code)
 
         # 2. Operator Full Name
         op_name = self.driver.find_element(
@@ -238,7 +364,7 @@ class FiremexRegistrationTests(unittest.TestCase):
         op_email = self.driver.find_element(
             By.XPATH, "//input[@type='email' or contains(@placeholder, 'name@domain.com')]"
         )
-        op_email.send_keys("johndoe@domain.com")
+        op_email.send_keys(f"operator+{uuid.uuid4().hex[:8]}@domain.com")
 
         # 4. Password setup field & Confirm Password field
         pass_inputs = self.driver.find_elements(
@@ -260,23 +386,17 @@ class FiremexRegistrationTests(unittest.TestCase):
 
         # 6. Submit Operator Request
         submit_btn = self.driver.find_element(
-            By.XPATH, "//button[@type='submit'] | //button[contains(., 'Request') or contains(., 'Register') or contains(., 'Submit')]"
+            By.XPATH, "//button[@type='submit' or contains(normalize-space(.), 'Request') or contains(normalize-space(.), 'Register') or contains(normalize-space(.), 'Submit')]"
         )
         self.assertTrue(submit_btn.is_enabled(), "Operator registration button is disabled.")
         submit_btn.click()
-        time.sleep(1)
 
-        # 7. Verification of success prompt
-        try:
-            alert = self.driver.switch_to.alert
-            alert_text = alert.text
-            self.assertIn("submitted", alert_text.lower())
-            alert.accept()
-        except Exception:
-            success_element = self.driver.find_element(
-                By.XPATH, "//*[contains(text(), 'submitted') or contains(text(), 'Request Sent') or contains(text(), 'successful')]"
-            )
-            self.assertTrue(success_element.is_displayed(), "Operator registration request confirmation not displayed.")
+        toast_message = self._wait_for_registration_toast()
+        self.assertIn(
+            "Access request submitted! Pending approval from the organization administrator.",
+            toast_message,
+        )
+        self.wait.until(EC.url_contains("/FiremeX/login"))
 
 if __name__ == "__main__":
     unittest.main()
