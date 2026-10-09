@@ -9,7 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, NoAlertPresentException, UnexpectedAlertPresentException
 
-BASE_URL = "http://localhost:8124/qa-firemex/0"
+BASE_URL = "http://localhost:5173/"
 
 class FiremexAutomatedTests(unittest.TestCase):
     @classmethod
