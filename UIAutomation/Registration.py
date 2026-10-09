@@ -55,6 +55,114 @@ class FiremexRegistrationTests(unittest.TestCase):
         ))
         Select(country).select_by_visible_text(country_name)
 
+    def _create_operator_test_organization(self):
+        org_btn = self.wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//*[contains(text(), 'Register as an Organization') or contains(text(), 'Select Organization')]")
+        ))
+        org_btn.click()
+
+        organization_name = f"Operator Validation Org {uuid.uuid4().hex[:8]}"
+        self.driver.find_element(By.XPATH, "//input[@placeholder='Enter Org Name']").send_keys(
+            organization_name
+        )
+        self._select_organization_sector_and_country()
+        self.driver.find_element(By.XPATH, "//input[@placeholder='Enter Organization Email']").send_keys(
+            f"admin+{uuid.uuid4().hex[:8]}@safetysolutions.com"
+        )
+        self.driver.find_element(
+            By.XPATH, "//input[@placeholder='Enter Organization Contact Number']"
+        ).send_keys("+1 202-555-0123")
+        self.driver.find_element(By.XPATH, "//input[@placeholder='Enter Administrator Name']").send_keys(
+            "Mary Admin"
+        )
+
+        password_fields = self.driver.find_elements(By.XPATH, "//input[@type='password']")
+        self.assertEqual(len(password_fields), 2, "Expected password and confirmation inputs.")
+        password_fields[0].send_keys("SecurePass123!")
+        password_fields[1].send_keys("SecurePass123!")
+
+        self.driver.find_element(
+            By.XPATH, "//button[@type='submit' and contains(normalize-space(.), 'Complete Registration')]"
+        ).click()
+        toast_message = self._wait_for_registration_toast()
+        self.assertIn(f'Organization "{organization_name}" registered!', toast_message)
+        org_code_match = re.search(r"ORG-\d{3}", toast_message)
+        self.assertIsNotNone(org_code_match, "Organization registration toast did not include an ORG-000 code.")
+        self.wait.until(EC.url_contains("/FiremeX/login"))
+        return org_code_match.group(0)
+
+    def _prepare_operator_form(self, org_code, email, password, confirmation, fill_fields=True):
+        self.driver.get(BASE_URL)
+        operator_card = self.wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//*[contains(text(), 'Register as an Operator') or contains(text(), 'Select Operator')]")
+        ))
+        operator_card.click()
+
+        self.driver.execute_script(
+            "window.__operatorRegistrationRequests = 0;"
+            "const originalFetch = window.fetch.bind(window);"
+            "window.fetch = (...args) => {"
+            "  if (/register|operator/i.test(String(args[0]))) {"
+            "    window.__operatorRegistrationRequests += 1;"
+            "  }"
+            "  return originalFetch(...args);"
+            "};"
+        )
+
+        if fill_fields:
+            self.driver.find_element(
+                By.XPATH, "//input[contains(@placeholder, 'e.g. ORG-101') or contains(@placeholder, 'ORG-101')]"
+            ).send_keys(org_code)
+            self.driver.find_element(By.XPATH, "//input[contains(@placeholder, 'Enter Name')]").send_keys(
+                "Sama Silva"
+            )
+            self.driver.find_element(
+                By.XPATH, "//input[@type='email' or contains(@placeholder, 'name@domain.com')]"
+            ).send_keys(email)
+            password_fields = self.driver.find_elements(By.XPATH, "//input[@type='password']")
+            self.assertEqual(len(password_fields), 2, "Expected password and confirmation inputs.")
+            password_fields[0].send_keys(password)
+            password_fields[1].send_keys(confirmation)
+
+            reason_fields = self.driver.find_elements(
+                By.XPATH, "//textarea | //input[contains(@placeholder, 'Reason') or contains(@name, 'reason')]"
+            )
+            if reason_fields:
+                reason_fields[0].send_keys("Requesting operator monitoring access.")
+
+    def _assert_operator_registration_rejected(self, expected_error_pattern=None):
+        submit_btn = self.driver.find_element(
+            By.XPATH, "//button[@type='submit' or contains(normalize-space(.), 'Request') or contains(normalize-space(.), 'Register') or contains(normalize-space(.), 'Submit')]"
+        )
+        submit_btn.click()
+
+        def get_validation_message(_):
+            error_nodes = self.driver.find_elements(
+                By.XPATH,
+                "//*[@role='alert' or @aria-live='assertive' or @aria-live='polite']"
+                " | //p[normalize-space(.)='Registration Failed']/following-sibling::p[1]",
+            )
+            for node in error_nodes:
+                if node.is_displayed() and node.text.strip():
+                    return node.text.strip()
+
+            invalid_fields = self.driver.find_elements(By.CSS_SELECTOR, "form :invalid")
+            for field in invalid_fields:
+                message = field.get_attribute("validationMessage")
+                if message:
+                    return message
+            return False
+
+        error_message = WebDriverWait(self.driver, 3).until(get_validation_message)
+        if expected_error_pattern:
+            self.assertRegex(error_message, expected_error_pattern)
+        self.assertEqual(
+            self.driver.execute_script("return window.__operatorRegistrationRequests;"),
+            0,
+            "Operator registration request was sent despite invalid form input.",
+        )
+        self.assertIn("/register", self.driver.current_url)
+
     # 1. LINK TO SIGN IN
     def test_TC_REG_01_verify_already_have_account_sign_in_link(self):
         """TC-REG-01: Verify 'Already have an account? Sign in' link navigates to login page."""
@@ -397,6 +505,59 @@ class FiremexRegistrationTests(unittest.TestCase):
             toast_message,
         )
         self.wait.until(EC.url_contains("/FiremeX/login"))
+
+    def test_TC_REG_08_reject_operator_invalid_organization_code_format(self):
+        """Malformed organization codes show a validation error without sending the request."""
+        org_code = self._create_operator_test_organization()
+        malformed_org_code = org_code.replace("-", "_")
+        self._prepare_operator_form(
+            malformed_org_code,
+            f"operator+{uuid.uuid4().hex[:8]}@domain.com",
+            "OperatorPass123!",
+            "OperatorPass123!",
+        )
+        self._assert_operator_registration_rejected(r"(?i)(organization|org|code|format|invalid)")
+
+    def test_TC_REG_09_reject_operator_invalid_email_format(self):
+        """Malformed operator emails show a validation error without sending the request."""
+        org_code = self._create_operator_test_organization()
+        self._prepare_operator_form(
+            org_code,
+            "operator-email-without-domain",
+            "OperatorPass123!",
+            "OperatorPass123!",
+        )
+        self._assert_operator_registration_rejected(r"(?i)(email|@|valid|format)")
+
+    def test_TC_REG_10_reject_operator_mismatched_passwords(self):
+        """Mismatched operator passwords show a validation error without sending the request."""
+        org_code = self._create_operator_test_organization()
+        self._prepare_operator_form(
+            org_code,
+            f"operator+{uuid.uuid4().hex[:8]}@domain.com",
+            "OperatorPass123!",
+            "DifferentPass123!",
+        )
+        self._assert_operator_registration_rejected(r"(?i)(password|match|confirm|different)")
+
+    def test_TC_REG_11_reject_operator_empty_required_fields(self):
+        """Empty operator registration fields show a validation error without sending the request."""
+        self.driver.get(BASE_URL)
+        operator_card = self.wait.until(EC.element_to_be_clickable(
+            (By.XPATH, "//*[contains(text(), 'Register as an Operator') or contains(text(), 'Select Operator')]")
+        ))
+        operator_card.click()
+        self.driver.execute_script(
+            "window.__operatorRegistrationRequests = 0;"
+            "const originalFetch = window.fetch.bind(window);"
+            "window.fetch = (...args) => {"
+            "  if (/register|operator/i.test(String(args[0]))) {"
+            "    window.__operatorRegistrationRequests += 1;"
+            "  }"
+            "  return originalFetch(...args);"
+            "};"
+        )
+        self._assert_operator_registration_rejected()
 
 if __name__ == "__main__":
     unittest.main()
