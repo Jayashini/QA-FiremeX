@@ -31,7 +31,7 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: secretpassword
       POSTGRES_DB: firemex_qa
-
+    command: ["postgres", "-c", "port=5433"]
     ports:
       - "5433:5432"
 

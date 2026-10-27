@@ -1,0 +1,3 @@
+[ Video Stream / RTSP ] ──> ( OpenCV: Frame Capture ) ──> ( Pre-processing )
+                                                                 │
+[ Alert / Saved Frame ] <── ( OpenCV: Draw Bounding Boxes ) <─── ( PyTorch: YOLO Model Inference )
